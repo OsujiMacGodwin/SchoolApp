@@ -1,0 +1,803 @@
+====================CHECK SPACE ON SQL SERVER=====================
+SELECT DISTINCT vs.volume_mount_point,
+vs.file_system_type,
+vs.logical_volume_name,
+CONVERT(DECIMAL(18,2),vs.total_bytes/1073741824.0) AS [Total Size (GB)],
+CONVERT(DECIMAL(18,2),vs.available_bytes/1073741824.0) AS [Available Size (GB)],
+CAST(CAST(vs.available_bytes AS FLOAT)/ CAST(vs.total_bytes AS FLOAT)
+AS DECIMAL(18,2)) * 100 AS [Space Free %]
+FROM sys.master_files AS f WITH (NOLOCK)
+CROSS APPLY sys.dm_os_volume_stats(f.database_id, f.[file_id]) AS vs OPTION (RECOMPILE);
+
+=========================DEEP SPACE CHECKS=================================================
+du -a -h --max-depth=1 | sort -hr
+
+=======================DELETE LARGE TRACE LOG===========================
+find -type f -mtime +3 -name '*.trc' -exec rm -f {} \;
+
+===========================MOUNT POINT MORE THAN 75% USED======================
+
+df -tg | awk 'NR < 2 || $5+0 >= 75 { print $2, $4, $5, $6 }' | sort -n
+
+df -h | awk 'NR < 2 || $5+0 >= 75 { print $2, $4, $5, $6 }' | sort -n
+
+===================ASM GROUP =======================================
+SELECT distinct name group_name , state state , type type ,
+round(total_mb/1024) TOTAL_GB , round(free_mb/1024) free_gb ,
+round((total_mb - free_mb) / 1024) used_gb ,
+round((1- (free_mb / total_mb))*100, 2) pct_used from
+v$asm_diskgroup where round((1- (free_mb / total_mb))*100, 2) > 0 ORDER BY name;
+
+
+======================TOTAL DATAFILES SIZE===================================================
+
+select sum(bytes)/1024/1024/1024/1024 DATAFILE_TB from v$datafile;
+select sum(bytes)/1024/1024/1024/1024 TEMPDATA_TB from dba_temp_files;
+
+======================DATA DICTIONARY======================
+SELECT (CASE WHEN A.TABLE_NAME IS NOT NULL THEN A.SN ELSE NULL END)  as "S/N",
+       A.TABLE_NAME,
+       A.COLUMN_NAME,
+       A.DATA_TYPE,
+       A.COLUMN_DESCRIPTION
+  FROM (WITH
+            TAB_CON
+            AS
+                (  SELECT ROW_NUMBER () OVER (ORDER BY TABLE_NAME)     AS "SN",
+                          TABLE_NAME
+                     FROM all_tab_columns
+                    WHERE COLUMN_ID = '1' AND owner = 'REDBOX'
+                 ORDER BY 2)
+          SELECT aol.SN      AS "SN",
+                 UPPER (
+                     CASE
+                         WHEN col.COLUMN_ID = 1 THEN col.table_name
+                         ELSE NULL
+                     END)    AS table_name,
+                 col.column_name,
+                 col.data_type,
+                 NULL        AS COLUMN_DESCRIPTION
+            FROM all_tab_columns col
+                 LEFT JOIN TAB_CON aol ON col.table_name = aol.table_name
+           WHERE col.owner = 'REDBOX'
+        ORDER BY col.table_name, col.column_id) A
+		
+===OMNIFLOW===========Data DICTIONARY====
+SELECT (CASE WHEN A.TABLE_NAME IS NOT NULL THEN A.SN ELSE NULL END)
+           AS "S/N",
+       A.TABLE_NAME,
+       A.COLUMN_NAME,
+       A.DATA_TYPE,
+       A.COLUMN_DESCRIPTION
+  FROM (WITH
+            TAB_CON
+            AS
+                (  SELECT ROW_NUMBER () OVER (ORDER BY TABLE_NAME)     AS "SN",
+                          TABLE_NAME
+                     FROM all_tab_columns
+                    WHERE     table_name NOT IN
+                                  ('OMNI_CHANNEL_FLEXBORDER_FORM_CONFIG_TBL_OLD01DEC23',
+                                   'OMNI_BULK_TRANSFER_SUMMARY_TBL_19FEB24',
+                                   'OMNI_CHANNEL_RETAIL_BENEFICIARIES_BACKUP',
+                                   'APPROVALMATRICES220624',
+                                   'APPROVALMATRICES_BKP_20240625',
+                                   'APPROVALTRAYS_BKP_20240625',
+                                   'APPROVAL_BKP_20240625',
+                                   'BENEFICIARY_MIG2',
+                                   'OMNI_BULK_TRANSFER_DETAILS_TBL080324BKP',
+                                   'OMNI_BULK_TRANSFER_SUMMARY_TBL080324BKP')
+                          AND COLUMN_ID = '1'
+                          AND owner = 'OMNICHANNELUSER'
+                 ORDER BY 2)
+          SELECT aol.SN      AS "SN",
+                 UPPER (
+                     CASE
+                         WHEN col.COLUMN_ID = 1 THEN col.table_name
+                         ELSE NULL
+                     END)    AS table_name,
+                 col.column_name,
+                 case when col.data_type = '' then col.data_type || DATA_LENGTH,
+                 NULL        AS COLUMN_DESCRIPTION
+            FROM all_tab_columns col
+                 LEFT JOIN TAB_CON aol ON col.table_name = aol.table_name
+           WHERE     col.owner = 'OMNICHANNELUSER'
+                 AND col.table_name NOT IN
+                         ('OMNI_CHANNEL_FLEXBORDER_FORM_CONFIG_TBL_OLD01DEC23',
+                          'OMNI_BULK_TRANSFER_SUMMARY_TBL_19FEB24',
+                          'OMNI_CHANNEL_RETAIL_BENEFICIARIES_BACKUP',
+                          'APPROVALMATRICES220624',
+                          'APPROVALMATRICES_BKP_20240625',
+                          'APPROVALTRAYS_BKP_20240625',
+                          'APPROVAL_BKP_20240625',
+                          'BENEFICIARY_MIG2',
+                          'OMNI_BULK_TRANSFER_DETAILS_TBL080324BKP',
+                          'OMNI_BULK_TRANSFER_SUMMARY_TBL080324BKP')
+        ORDER BY col.table_name, col.column_id) A		
+
+===============================================================
+q{gEwJ9yikjf
+
+b!>yjVrMH8-:
+[2/8 1:11 PM] Omeh, Chukwuemeka C
+SQLSVRCONS.ng.sbicdirectory.com 
+is b!>yjVrMH8-:
+ 
+=======================================================================clean-up activities===============================================================
+select OWNER,OBJECT_NAME,OBJECT_TYPE,CREATED,STATUS from dba_objects where OWNER not in ('ARCHIVE','APDMADM') and OWNER like  'A______'
+UNION ALL
+select OWNER,OBJECT_NAME,OBJECT_TYPE,CREATED,STATUS from dba_objects where OWNER not in ('ARCHIVE','APDMADM') and OWNER like  'EA%' order by 1 desc;
+
+
+====================INVALID OBJECTS==================================
+SELECT OWNER,
+       OBJECT_NAME,
+       OBJECT_TYPE,
+       LAST_DDL_TIME,
+       CREATED
+  FROM dba_objects
+ WHERE     STATUS = 'INVALID'
+       AND OWNER IN
+               (SELECT USERNAME
+                  FROM DBA_USERS
+                 WHERE     ACCOUNT_STATUS = 'OPEN'
+                       AND PROFILE <> 'DEFAULT'
+                       AND USERNAME NOT IN ('SYS', 'SYSTEM', 'ALWAYSON')) ORDER BY LAST_DDL_TIME DESC;
+                       
+
+==========================CHECK THE TABLESPACE MORE THAN 60% USED==============
+SET COLSEP |
+SET LINESIZE 100 PAGES 100 TRIMSPOOL ON NUMWIDTH 14
+COL name FORMAT a25
+COL owner FORMAT a15
+COL "Used (GB)" FORMAT a15
+COL "Free (GB)" FORMAT a15
+COL "(Used) %" FORMAT a15
+COL "Size (M)" FORMAT a15
+
+
+SELECT d.status "Status",
+       d.tablespace_name "Name",
+       TO_CHAR (NVL (a.bytes / 1024 / 1024 / 1024, 0), '99,999,990.90')
+          "Size (GB)",
+       TO_CHAR (NVL (a.bytes - NVL (f.bytes, 0), 0) / 1024 / 1024 / 1024,
+                '99999999.99')
+          "Used (GB)",
+       TO_CHAR (NVL (f.bytes / 1024 / 1024 / 1024, 0), '99,999,990.90')
+          "Free (GB)",
+       TO_CHAR (NVL ( (a.bytes - NVL (f.bytes, 0)) / a.bytes * 100, 0),
+                '990.00')
+          "(Used) %"
+  FROM sys.dba_tablespaces d,
+       (  SELECT tablespace_name, SUM (bytes) bytes
+            FROM dba_data_files
+        GROUP BY tablespace_name) a,
+       (  SELECT tablespace_name, SUM (bytes) bytes
+            FROM dba_free_space
+        GROUP BY tablespace_name) f
+ WHERE     d.tablespace_name = a.tablespace_name(+)
+       AND d.tablespace_name = f.tablespace_name(+)
+       AND NOT (    d.extent_management LIKE 'LOCAL'
+                AND d.contents LIKE 'TEMPORARY') 
+       AND TO_CHAR (NVL ( (a.bytes - NVL (f.bytes, 0)) / a.bytes * 100, 0),
+                    '990.00') > 85;
+UNION ALL
+SELECT d.status "Status",
+       d.tablespace_name "Name",
+       TO_CHAR (NVL (a.bytes / 1024 / 1024 / 1024, 0), '99,999,990.90')
+          "Size (GB)",
+       TO_CHAR (NVL (t.bytes, 0) / 1024 / 1024 / 1024, '99999999.99')
+          "Used (GB)",
+       TO_CHAR (NVL ( (a.bytes - NVL (t.bytes, 0)) / 1024 / 1024 / 1024, 0),
+                '99,999,990.90')
+          "Free (GB)",
+       TO_CHAR (NVL (t.bytes / a.bytes * 100, 0), '990.00') "(Used) %"
+  FROM sys.dba_tablespaces d,
+       (  SELECT tablespace_name, SUM (bytes) bytes
+            FROM dba_temp_files
+        GROUP BY tablespace_name) a,
+       (  SELECT tablespace_name, SUM (bytes_cached) bytes
+            FROM v$temp_extent_pool
+        GROUP BY tablespace_name) t
+ WHERE     d.tablespace_name = a.tablespace_name(+)
+       AND d.tablespace_name = t.tablespace_name(+)
+       AND d.extent_management LIKE 'LOCAL'
+       AND d.contents LIKE 'TEMPORARY'
+       AND TO_CHAR (NVL (t.bytes / a.bytes * 100, 0), '990.00') > 80;
+
+====================================CHECK THE TOP 10 TABLES ON THE DATABASE================================
+
+SELECT *
+  FROM (  SELECT SEGMENT_NAME,
+                 SEGMENT_TYPE,
+                 BYTES / 1024 / 1024 / 1024 GB,
+                 TABLESPACE_NAME
+            FROM dba_segments
+        ORDER BY 3 DESC)
+ WHERE ROWNUM <= 10
+ 
+ =======================================STANBIC TOP Tables======================================
+ 
+   SELECT OWNER,
+         SEGMENT_NAME                              TABLE_NAME,
+         TABLESPACE_NAME,
+         ROUND (BYTES / 1024 / 1024 / 1024, 2)     SIZE_GB
+    FROM dba_segments
+   WHERE SEGMENT_TYPE = 'TABLE' AND TABLESPACE_NAME = 'REDBOXTBS_DATA'
+ORDER BY 4 DESC
+
+=================STANBIC TOP Table =========================MORE for MULT
+SELECT * from (SELECT B.OWNER,
+         B.SEGMENT_NAME                              TABL_NAME,
+         B.SEGMENT_TYPE                            TYPE,
+         B.TABLESPACE_NAME,
+         ROUND (BYTES / 1024 / 1024 / 1024, 2) SIZE_GB
+    FROM dba_segments B where B.SEGMENT_TYPE = 'TABLE'
+UNION ALL
+  SELECT 
+         C.OWNER,
+         C.SEGMENT_NAME                              TABL_NAME,
+        'TABLE PARTITION' TYPE,
+        'MORE THAN 1 TABLESPACE' TABLESPACE_NAME,
+        sum (ROUND (C.BYTES / 1024 / 1024 / 1024, 2))     SIZE_GB
+    FROM dba_segments C where C.SEGMENT_TYPE = 'TABLE PARTITION' group by C.SEGMENT_NAME, C.OWNER)
+    order by 5 desc;
+
+
+
+
+
+ ==================================CHECK THE AMMOUNT OF SPACE CONSUMED BY A TABLE============================
+ SELECT *
+  FROM (  SELECT SEGMENT_NAME,
+                 SEGMENT_TYPE,
+                 BYTES / 1024 / 1024 / 1024 GB,
+                 TABLESPACE_NAME
+            FROM dba_segments
+        ORDER BY 3 DESC)
+ WHERE  TABLESPACE_NAME = 'UBA_CUSTOM_TBLSPC' and SEGMENT_NAME like 'EBAL%';
+ 
+ 
+ 
+ ============================10TOP TABLE WITH TABLESAPCE MORE THAN 80% USED===============================
+SELECT *
+  FROM (SELECT d.status                     "Status",
+               d.tablespace_name            TAABLE_S_NAME,
+               TO_CHAR (NVL (a.bytes / 1024 / 1024 / 1024, 0),
+                        '99,999,990.90')    DB_SIZE_GB,
+               TO_CHAR (
+                   NVL (a.bytes - NVL (f.bytes, 0), 0) / 1024 / 1024 / 1024,
+                   '99999999.99')           DB_USED_SIZE_GB,
+               TO_CHAR (NVL (f.bytes / 1024 / 1024 / 1024, 0),
+                        '99,999,990.90')    DB_FREE_SIZE_GB,
+               TO_CHAR (
+                   NVL ((a.bytes - NVL (f.bytes, 0)) / a.bytes * 100, 0),
+                   '990.00')                DB_USED_SIZE_PERCENT
+          FROM sys.dba_tablespaces  d,
+               (  SELECT tablespace_name, SUM (bytes) bytes
+                    FROM dba_data_files
+                GROUP BY tablespace_name) a,
+               (  SELECT tablespace_name, SUM (bytes) bytes
+                    FROM dba_free_space
+                GROUP BY tablespace_name) f
+         WHERE     d.tablespace_name = a.tablespace_name(+)
+               AND d.tablespace_name = f.tablespace_name(+)
+               AND NOT (    d.extent_management LIKE 'LOCAL'
+                        AND d.contents LIKE 'TEMPORARY')
+               AND TO_CHAR (
+                       NVL ((a.bytes - NVL (f.bytes, 0)) / a.bytes * 100, 0),
+                       '990.00') >
+                   80) T1
+       LEFT JOIN (SELECT DISTINCT (TABLESPACE_NAME)
+                    FROM (  SELECT SEGMENT_NAME,
+                                   SEGMENT_TYPE,
+                                   BYTES / 1024 / 1024 / 1024     GB,
+                                   TABLESPACE_NAME
+                              FROM dba_segments
+                          ORDER BY 3 DESC)
+                   WHERE ROWNUM <= 10) T2
+           ON T2.TABLESPACE_NAME = T1.TAABLE_S_NAME
+ 
+08065569440 - KABIRU
+
+================================GET TABLESPACE DATAFILES=====================================
+select FILE_NAME, FILE_ID, (BYTES/1024/1024/1024) GB
+from SYS.DBA_DATA_FILES
+where TABLESPACE_NAME = 'TEMP'; and (BYTES/1024/1024/1024) < 20 order by FILE_ID desc;
+
+
+==============CREATE A NEW TABLE SPACE=========
+CREATE TABLESPACE "TEST"
+DATAFILE '/u02/oracle/oradata/FNGDB/fngpdb/TEST01.dbf' SIZE 50G
+AUTOEXTEND ON NEXT 50G
+MAXSIZE 100G
+EXTENT MANAGEMENT LOCAL
+SEGMENT SPACE MANAGEMENT AUTO
+ONLINE;
+
+
+==============OR CREATE A NEW TABLE SPACE=========
+CREATE TABLESPACE "TEST"
+DATAFILE '/u02/oracle/oradata/FNGDB/fngpdb/TEST01.dbf' SIZE 50M
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+=================ADD DATAFILE===================
+ALTER TABLESPACE TEST ADD DATAFILE '/u02/oracle/oradata/FNGDB/fngpdb/TEST02.dbf' SIZE 50M;
+
+========EXTEND DATAFILE======================
+ALTER DATABASE DATAFILE '+DATA/PNGFIN/DATAFILE/pngfin_1053516132_7vvcmob4_101.dbf' RESIZE 5G;
+
+=============DROP TABLE SPACE AND DATAFILES============
+DROP TABLESPACE TEST INCLUDING CONTENTS;
+DROP TABLESPACE TEST INCLUDING CONTENTS AND DATAFILES;
+
+==============MOVING TABLE TO ANOTHER TABLESPACE=======
+ALTER TABLE TALERT.ARCH_EMAIL_MESSAGE_QUE_2021_02 MOVE TABLESPACE SOFT_LIVE_USER2;
+
+ALTER TABLE REDBOX.RBX_P_NIPIN_NAMEENQ_LOG20102023 MOVE TABLESPACE ARCHIVE_DATA;
+
+
+==============OR CREATE A NEW TABLE SPACE=========
+CREATE TABLESPACE TEST
+DATAFILE '/u02/oracle/oradata/FNGDB/fngpdb/TEST01.dbf' REUSE;
+
+==============RENAME A TABLE=================================== You will have to disable all releted triggers.
+ALTER TABLE custom.smsbanker_alerts rename to smsbanker_alerts_23122022;
+
+=============FINCA===============
+CREATE TABLESPACE "CHANNEL"
+DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/channel01.dbf' SIZE 5G
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+CREATE TABLESPACE FIMASTER
+DATAFILE '+DATA' SIZE 10G
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+CREATE TABLESPACE FINFADM
+DATAFILE '+DATA' SIZE 10G
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+
+CREATE TABLESPACE "TREASURY"
+DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/dealmgr01.dbf' SIZE 5G
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+CREATE TABLESPACE "QUARTZ"
+DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/quartz01.dbf' SIZE 5G
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+CREATE TABLESPACE "NSNDAT01"
+DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/NSNDAT01.dbf' SIZE 31G
+AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE NSNDAT01 ADD DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/NSNDAT02.dbf' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE NSNDAT01 ADD DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/NSNDAT03.dbf' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE NSNDAT01 ADD DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/NSNDAT04.dbf' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE NSNDAT01 ADD DATAFILE '/u02/oracle/oradata/FINCADB/fincapdb/NSNDAT05.dbf' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+13700195754711
+
+=========INSERT FORMULA IN EXCEL=============
+="INSERT INTO misuser.rbx_bvn_details_fetch_log_6 VALUES('"&A1&"','"&B1&"','"&C1&"','"&D1&"','"&E1&"','"&F1&"','"&G1&"')"";"
+
+ALTER TABLESPACE TEMP ADD TEMPFILE '+DATA' SIZE 10G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER DATABASE TEMPFILE '+PDATA/PNGFIN/TEMPFILE/temp.19241.1137075955' RESIZE 1G;-- 
+
+ALTER DATABASE TEMPFILE '+DATA/PNGFIN/DATAFILE/pngfin_1053516132_7vvcmob4_101.dbf' RESIZE 1G;-- 
+
+ALTER TABLESPACE CRM_MASTER1 ADD DATAFILE '+DATA' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE PART_TAB_HTD_Q4_TBLSPC ADD DATAFILE '+DATA' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE ARCHIVE_DATA ADD DATAFILE '+DATA' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLESPACE PART_TAB_HTD_Q3_TBLSPC ADD DATAFILE '+DATA' SIZE 31G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER TABLE CRMUSER.corporate RENAME TO corporate_180923;
+select index_name from dba_indexes where table_name='CORPORATE_180923'; 
+ALTER INDEX CRMUSER.IX_CORPORATE_NCFLAG RENAME TO IX_CORPORATE_NCFLAG04;
+alter trigger CRMUSER.TRG_ACCOUNTS_AUDT rename to TRG_ACCOUNTS_AUDT01;
+alter table CRMUSER.ACCOUNTS_180923 rename constraint PKCHECK_BNV_LENGTH to PKCHECK_BNV_LENGTH01;
+
+
+select d.TABLESPACE_NAME, d.FILE_NAME, d.BYTES/1024/1024 SIZE_MB, d.AUTOEXTENSIBLE, d.MAXBYTES/1024/1024 MAXSIZE_MB, d.INCREMENT_BY*(v.BLOCK_SIZE/1024)/1024 INCREMENT_BY_MB
+from dba_temp_files d,
+ v$tempfile v
+where d.FILE_ID = v.FILE#
+order by d.TABLESPACE_NAME, d.FILE_NAME;
+
+select FILE_NAME from dba_temp_files;
+10.234.203.217
+10.234.171.50
+
+Clirec DB - 10.234.18.26
+
+10.234.171.111 ORA06564
+
+
+CFRMTS   - SYS@pngcfm1 
+
+---------ALTER TABLESPACE SYSTEM ADD DATAFILE '+DATA' SIZE 5G AUTOEXTEND ON MAXSIZE UNLIMITED;
+ALTER TABLESPACE SYSAUX ADD DATAFILE '+DATA' SIZE 5G AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+Status    Name                           Size (GB)      Used (GB)
+--------- ------------------------------ -------------- ------------
+Free (GB)      (Used)
+-------------- -------
+ONLINE    SYSTEM                                   0.85          .85
+          0.00   99.86
+
+ONLINE    SYSAUX                                   3.72         3.49
+          0.23   93.72
+
+
+SYS@pngsfdm1 >
+
+
+BEGIN 
+  
+  MISUSER.MONTHLY_STATEMENT_QUERIES_NEW();
+  COMMIT;
+  
+END;
+
+==========EOM CAM backups===============
+SELECT DISTINCT (OBJECT_NAME), created
+    FROM dba_objects
+   WHERE OBJECT_NAME LIKE '%V_DTDTRANDETAILS_L%' AND object_type = 'TABLE'
+GROUP BY OBJECT_NAME, created
+ORDER BY created DESC;
+
+
+CREATE PUBLIC DATABASE LINK ACCOUNTOPENINGDB
+ CONNECT TO APPLOGIN
+ IDENTIFIED BY <password>
+ USING '(DESCRIPTION = (ADDRESS = (PROTOCOL = TCP)(HOST = 10.234.178.115)(PORT = 1521)) (CONNECT_DATA = (SID = dg4msql24)) (HS = OK))';
+
+
+=============Reclaim space or shrink datafile ==============
+select 'ALTER DATABASE DATAFILE ''' || N.file_name || ''' RESIZE ' || ROUND(N.hwm) || 'M' || ';' FROM
+(
+SELECT k.tablespace_name, K.file_name, K.file_size, hwm, K.file_size-hwm can_save
+FROM (SELECT /*+ RULE */ ddf.tablespace_name, ddf.file_name file_name,
+ddf.bytes/1048576 file_size,(ebf.maximum + de.blocks-1)*dbs.db_block_size/1048576 hwm
+FROM dba_data_files ddf,(SELECT file_id, MAX(block_id) maximum FROM dba_extents GROUP BY file_id) ebf,dba_extents de,
+(SELECT value db_block_size FROM v$parameter WHERE name='db_block_size') dbs
+WHERE ddf.file_id = ebf.file_id 
+AND de.file_id = ebf.file_id
+AND de.block_id = ebf.maximum
+--and ddf.tablespace_name = 'HISTORY'
+ORDER BY 1,2) K order by K.file_size-hwm desc) N
+
+
+
+================DUMPS===========================================
+directory=EXPDP_DIR dumpfile=CHRG_TRAN_LOG_TBL_31JAN24_%u.dmp
+logfile=CHRG_TRAN_LOG_TBL_230324.log
+parallel=6
+cluster=n
+tables=TBAADM.CHRG_TRAN_LOG_TBL
+QUERY="WHERE CHRG_TRAN_DATE between to_date('01-JAN-23','DD-MON-YY') and to_date('31-JAN-24','DD-MON-YY')"
+
+
+
+directory=EXPDP_DIR dumpfile=HIST_TRAN_HEADER_TABLE_31JAN24_%u.dmp
+logfile=HIST_TRAN_HEADER_TABLE_230324.log
+parallel=6
+cluster=n
+tables=TBAADM.HIST_TRAN_HEADER_TABLE
+QUERY="WHERE CHRG_TRAN_DATE between to_date('01-JAN-23','DD-MON-YY') and to_date('31-JAN-24','DD-MON-YY')"
+
+
+directory=EXPDP_DIR dumpfile=INTEREST_RPT_DET_TABLE_31JAN24_%u.dmp
+logfile=INTEREST_RPT_DET_TABLE_230324.log
+parallel=6
+cluster=n
+tables=TBAADM.INTEREST_RPT_DET_TABLE
+QUERY="WHERE RCRE_TIME between to_date('01/01/2023 00:00:00', 'dd/mm/yyyy hh24:mi:ss') and to_date('21/03/2024 12:00:00', 'dd/mm/yyyy hh24:mi:ss')"
+
+directory=EXPDP_DIR dumpfile=ABNRML_TRAN_AUDIT_TABLE_31JAN24_%u.dmp
+logfile=ABNRML_TRAN_AUDIT_TABLE_230324.log
+parallel=6
+cluster=n
+tables=TBAADM.ABNRML_TRAN_AUDIT_TABLE
+QUERY="WHERE TRAN_DATE between to_date('01-JAN-23','DD-MON-YY') and to_date('21-MAR-24','DD-MON-YY')"
+
+
+==============Oracle Gateway=============
+CREATE PUBLIC DATABASE LINK EZCASH_LINK
+ CONNECT TO INSTANTCASH
+ IDENTIFIED BY <password>
+ USING '(DESCRIPTION = (ADDRESS_LIST = (ADDRESS = (PROTOCOL = tcp)(HOST = 10.234.17.21)(PORT = 1521))) (CONNECT_DATA = (SID = dg4msql3)) (HS = OK))';
+ 
+ 
+======CHECK FAILED RMAN BACKUP====================
+
+SELECT SESSION_KEY,
+         INPUT_TYPE,
+         STATUS,
+         TO_CHAR (START_TIME, 'mm/dd/yy hh24:mi')     start_time,
+         TO_CHAR (END_TIME, 'mm/dd/yy hh24:mi')       end_time,
+         elapsed_seconds / 3600                       hrs
+    FROM V$RMAN_BACKUP_JOB_DETAILS
+ORDER BY session_key desc FETCH FIRST 3 ROWS ONLY ;
+
+D:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\DATA
+
+
+
+
+Restore UAT
+==============
+Step 1 = Restore the controlfile of the Incremental Backup
+
+restore primary controlfile from 'flashback/rmanbkp/daily/pngfin/31AUG2024INCR/pngfin_ctrl_file_8i3436no_49426_1_1.bkp'
+
+Sept 2 = Restore database
+
+nohup rman target / @/flashback/rmanbkp/daily/pngfin/tngfinrestore.full log=/flashback/expdp//backupFINACLEUNGFINrec_update1.ful.log &
+
+Step 3 = Switch DATABASE
+
+
+Step 4 = Recover Database to an SCN 
+
+
+
+========CHECK SCN============
+
+select status, checkpoint_change#,
+       to_char(checkpoint_time, 'DD-MON-YYYY HH24:MI:SS') as checkpoint_time,
+       count(*)
+from v$datafile_header
+group by status, checkpoint_change#, checkpoint_time
+order by status, checkpoint_change#, checkpoint_time;
+
+
+===== ON SQL ===================================
+select value from GV$DIAG_INFO WHERE name='Diag Trace';
+
+
+
+
+=====From Linux=================
+find $ORACLE_BASE -type f -name alert_$ORACLE_SID.log
+
+
+=======ADCRI==========
+[oracle@ungcorora2 ~]$ adrci
+
+ADRCI: Release 19.0.0.0.0 - Production on Wed Apr 12 13:49:45 2023
+
+Copyright (c) 1982, 2019, Oracle and/or its affiliates.  All rights reserved.
+
+ADR base = "/u01/app/oracle"
+adrci> show home
+
+
+=======You can use the following scripts to display alertlog of Oracle database.=========
+
+set linesize 150
+set pagesize 150
+
+---version 1
+SELECT SUBSTR (MESSAGE_TEXT, 1, 300) MESSAGE_TEXT,
+TO_CHAR (ORIGINATING_TIMESTAMP, 'DD-MON-YYYY HH24:MI:SS') Occur_date
+FROM X$DBGALERTEXT
+WHERE (MESSAGE_TEXT LIKE '%ORA-%' OR UPPER (MESSAGE_TEXT) LIKE '%ERROR%' OR UPPER (MESSAGE_TEXT) LIKE '%ALTER SYSTEM%' OR UPPER (MESSAGE_TEXT) LIKE '%ALTER DATABASE%')
+AND CAST (ORIGINATING_TIMESTAMP AS DATE) > SYSDATE - 1;
+
+---version 2 - count 
+SELECT SUBSTR (MESSAGE_TEXT, 1, 300) MESSAGE_TEXT, COUNT (*) cnt
+FROM X$DBGALERTEXT
+WHERE (MESSAGE_TEXT LIKE '%ORA-%' OR UPPER (MESSAGE_TEXT) LIKE '%ERROR%')
+AND CAST (ORIGINATING_TIMESTAMP AS DATE) > SYSDATE - 1 
+GROUP BY SUBSTR (MESSAGE_TEXT, 1, 300);
+
+exit
+
+
+
+
+==========================
+
+select TO_CHAR(A.ORIGINATING_TIMESTAMP, 'dd.mm.yyyy') MESSAGE_TIME
+,message_text
+,host_id
+,inst_id
+,adr_home 
+from V$DIAG_ALERT_EXT A
+where component_id='rdbms'
+and message_text like '%ORA-%'
+order by 1 desc;
+
+========================
+
+================Get the Linux folder size=============
+du -h /u01/app/| sort -rh | head -24
+
+
+
+select PERCENT_SPACE_USED from v$flash_recovery_area_usage where FILE_TYPE = 'ARCHIVED LOG';
+
+
+
+=====================Trim Alert Log===============================
+If you want to keep most recent entries in the alert log just like trimming obsolete records off the alert log file, you may play this trick.
+
+Here are the steps:
+
+1. Backup specific number of records
+Backup the last certain number of lines of the alert log into a second file which is temporary and transitional in the first command. 
+In this example, we keep 50000 lines.
+
+2. [oracle@test ~]$ tail -50000 /u01/app/oracle/diag/rdbms/tngfin/tngfin/trace/alert_tngfin.log > /u01/app/oracle/diag/rdbms/tngfin/tngfin/trace/alert_tngfin.log.copy
+Copy those records back
+Copy the temporary and transitional file back to the alert log with force option.
+
+3. [oracle@test ~]$ cp -f /path/to/alert_tngfin.log.copy /path/to/alert_tngfin.log
+Empty backup file
+Empty the transitional file in order to free its space if the space is still sensitive.
+
+[oracle@test ~]$ cat /dev/null > /path/to/alert_tngfin.log.copy
+For convenience, I concatenate all commands in one line for executing them without any gaps. Additionally, 
+this could also reduce the loss of log entries between executions.
+
+[oracle@test ~]$ cd /u01/app/oracle/diag/rdbms/tngfin/tngfin/trace/
+[oracle@test ~]$ tail -5000 alert_+ASM1.log > alert_+ASM1.log.copy; cp -f alert_+ASM1.log.copy alert_+ASM1.log; cat /dev/null > alert_+ASM1.log.copy
+
+
+# For deleting obsolete audit files
+find /u01/app/oracle/diag/rdbms/tngfin/tngfin/trace -type f -mtime +3 -name '*.trc' -exec rm -f {} \;
+
+
+# For deleting obsolete trace files
+find /u01/app/oracle/diag/rdbms/tngfin/tngfin/trace -type f -mtime +20 -name '*.trc' -exec rm -f {} \;
+find /u01/app/grid/diag/asm/+asm/+ASM1/trace -type f -mtime +1 -name '*.tr*' -exec rm -f {} \;
+
+tail -50000 alert_pngsfdm2.log > alert_pngsfdm2.log.copy; cp -f alert_pngfin.log.copy alert_pngfin.log; cat /dev/null > alert_pngfin.log.copy
+
+tail -500 alert_ungremedy.log > alert_ungremedy.log.copy; cp -f alert_ungremedy.log.copy alert_ungremedy.log; cat /dev/null > alert_ungremedy.log.copy
+
+/u01/app/grid/diag/tnslsnr/pngoda5/asmnet1lsnr_asm/trace
+/u01/app/grid/diag/tnslsnr/pngoda5/asmnet2lsnr_asm/trace  
+/u01/app/grid/diag/tnslsnr/pngoda5/listener_scan1/trace
+
+find /u01/app/oracle/diag/rdbms/pngfin/pngfin1/trace -type f -mtime +30 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngaud/pngaud1/trace -type f -mtime +30 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngcem/pngcem1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngcog/pngcog1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngctm/pngctm1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngdtr/pngdtr1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngesb/pngesb1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngitms/pngitms1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngpas/pngpas1/trace -type f -mtime +10 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngrdbox/pngrdbox1/trace -type f -mtime +30 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngfib/pngfib1/trace -type f -mtime +30 -name '*.tr*' -exec rm -f {} \;
+find /u01/app/oracle/diag/rdbms/pngabank/pngabank1/trace -type f -mtime +20 -name '*.tr*' -exec rm -f {} \;
+
+
+
+====================MS SQL SERVER=====================================================
+
+
+SCRIPTS = [
+            # Extracts names of user databases
+            '''
+                select name
+                from sys.sysdatabases
+                where 1=1
+                and name not in
+                ('master','tempdb','model','msdb')
+            ''',
+            # Extracts the size of drive
+            '''
+                SELECT distinct(volume_mount_point), 
+                total_bytes/1048576 as Size_in_MB, 
+                available_bytes/1048576 as Free_in_MB,
+                (select ((available_bytes/1048576* 1.0)/(total_bytes/1048576* 1.0) *100)) as FreePercentage
+                FROM sys.master_files AS f CROSS APPLY 
+                sys.dm_os_volume_stats(f.database_id, f.file_id)
+                group by volume_mount_point, total_bytes/1048576, 
+                available_bytes/1048576 order by 4
+            ''',
+            # Extracts information with regards to log shipping errors
+            '''
+                SELECT CASE agent_type WHEN 1 THEN 'Backup' WHEN 2 THEN 'Copy' WHEN 3 THEN 'Restore' END as agent_type, * 
+                from msdb..log_shipping_monitor_error_detail
+                where log_time between getdate() and DATEADD(dd,-7,getdate())
+            ''',
+
+            #Extract information regarding the state of always on availability group
+            '''
+                SELECT C.name, CS.replica_server_name, CS.join_state_desc, RS.role_desc, RS.operational_state_desc, RS.connected_state_desc, RS.synchronization_health_desc
+                FROM sys.availability_groups_cluster AS C
+                INNER JOIN sys.dm_hadr_availability_replica_cluster_states AS CS
+                ON CS.group_id = C.group_id
+                INNER JOIN sys.dm_hadr_availability_replica_states AS RS
+                ON RS.replica_id = CS.replica_id
+            ''',
+            # Extracts information with regards to Backups
+            '''
+             SELECT DB.name AS Database_Name
+                ,MAX(DB.recovery_model_desc) AS Recovery_Model
+                ,MAX(BS.backup_start_date) AS Last_Backup
+                ,MAX(CASE WHEN BS.type = 'D'
+                THEN BS.backup_start_date END)
+                AS Last_Full_backup
+                ,SUM(CASE WHEN BS.type = 'D'
+                THEN 1 END)
+                AS Count_Full_backup
+                ,MAX(CASE WHEN BS.type = 'L'
+                THEN BS.backup_start_date END)
+                AS Last_Log_backup
+                ,MAX(CASE WHEN BS.type = 'I'
+                THEN BS.backup_start_date END)
+                AS Last_Differential_backup
+                FROM sys.databases AS DB
+                LEFT JOIN
+                msdb.dbo.backupset AS BS
+                ON BS.database_name = DB.name
+                WHERE 1=1 
+				and database_name not in ('msdb','tempdb','master','model')
+				and
+				ISNULL(BS.is_damaged, 0) = 0-- exclude damaged backups
+                GROUP BY DB.name
+                ORDER BY Last_Backup desc
+
+            ''',
+            # Information with regards to failed jobs on the Database
+            '''
+                SELECT MSDB.dbo.agent_datetime(jh.run_date,jh.run_time) as date_time
+                ,j.name as job_name,js.step_id as job_step,jh.message as error_message
+                FROM msdb.dbo.sysjobs AS j
+                INNER JOIN msdb.dbo.sysjobsteps AS js ON js.job_id = j.job_id
+                INNER JOIN msdb.dbo.sysjobhistory AS jh ON jh.job_id = j.job_id AND jh.step_id = js.step_id
+                WHERE jh.run_status = 0 AND MSDB.dbo.agent_datetime(jh.run_date,jh.run_time) >= GETDATE()-7
+                ORDER BY MSDB.dbo.agent_datetime(jh.run_date,jh.run_time) DESC
+            ''',
+            # List of users on the Database
+            '''
+                select a.database_id,
+                a.name,a.create_date,b.name,a.user_access_desc,a.state_desc,compatibility_level, recovery_model_desc, Sum((c.size*8)/1024) as DBSizeInMB
+                from sys.databases a inner join sys.server_principals b on a.owner_sid=b.sid inner join sys.master_files c on a.database_id=c.database_id
+                Where a.database_id>0
+                Group by a.name,a.create_date,b.name,a.user_access_desc,compatibility_level,a.state_desc, recovery_model_desc,a.database_id
+            ''',
+            '''
+                select sp.name as login,
+                sp.create_date,
+                --sp.type_desc as login_type,
+                case when sp.is_disabled = 1 then 'Disabled'
+                else 'Enabled' end as status
+                from sys.server_principals sp
+                left join sys.sql_logins sl
+                on sp.principal_id = sl.principal_id
+                left join sys.database_principals dp
+                on sp.principal_id = dp.principal_id
+                where sp.type not in ('A', 'G', 'R', 'X')
+                and sp.type_desc not in ('CERTIFICATE_MAPPED_LOGIN')
+                --and dp.type not in ( 'S', 'U', 'G' )
+                and sp.name not in ('NT AUTHORITY\SYSTEM', 'NT Service\MSSQLSERVER', 'NT SERVICE\SQLSERVERAGENT','NT SERVICE\SQLWriter','NT SERVICE\Winmgmt','##MS_PolicyEventProcessingLogin##','##MS_PolicyTsqlExecutionLogin##')
+                order by sp.name
+            ''',
+            """
+                SELECT
+                @@SERVERNAME AS ServerName
+                , name AS LoginName
+                , CAST(LOGINPROPERTY(name, 'PasswordLastSetTime') as varchar) AS PasswordLastSetTime
+                , cast(ISNULL(LOGINPROPERTY(name, 'DaysUntilExpiration'), 'Never Expire') as varchar) AS DaysUntilExpiration
+                , cast(ISNULL(CONVERT(VARCHAR(10), DATEADD(DAY, CONVERT(int, LOGINPROPERTY(name, 'DaysUntilExpiration')), CONVERT(DATE, LOGINPROPERTY(name, 'PasswordLastSetTime'))), 101), 'Never Expire') as varchar) AS PasswordExpirationDate
+                , CASE WHEN is_expiration_checked = 1 THEN 'TRUE' ELSE 'FALSE' END AS PasswordExpireChecked
+                FROM sys.sql_logins
+                ORDER BY PasswordLastSetTime DESC
+            """
+            ]
+			
+			
+			
+			
+
