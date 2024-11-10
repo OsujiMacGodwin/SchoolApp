@@ -1,0 +1,126 @@
+SELECT   a.thread#,  b. last_seq, a.applied_seq, a. last_app_timestamp, b.last_seq-a.applied_seq   ARC_DIFF 
+FROM (SELECT  thread#, MAX(sequence#) applied_seq, 
+MAX(next_time) last_app_timestamp FROM gv$archived_log WHERE applied = 'YES' GROUP BY thread#) a,
+(SELECT  thread#, MAX (sequence#) last_seq FROM gv$archived_log GROUP BY thread#) b WHERE a.thread# = b.thread#;
+
+
+SELECT ARCH.THREAD# "Thread", ARCH.SEQUENCE# "Last in Sequence", APPL.SEQUENCE# "Last Applied Sequence", (ARCH.SEQUENCE# - APPL.SEQUENCE#) "Difference"
+FROM
+(SELECT THREAD# ,SEQUENCE# FROM V$ARCHIVED_LOG WHERE (THREAD#,FIRST_TIME ) IN (SELECT THREAD#,MAX(FIRST_TIME) FROM V$ARCHIVED_LOG GROUP BY THREAD#)) ARCH,
+(SELECT THREAD# ,SEQUENCE# FROM V$LOG_HISTORY WHERE (THREAD#,FIRST_TIME ) IN (SELECT THREAD#,MAX(FIRST_TIME) FROM V$LOG_HISTORY GROUP BY THREAD#)) APPL
+WHERE
+ARCH.THREAD# = APPL.THREAD#
+ORDER BY 1;
+
+=======What is the MRP process waiting for status ? You can check with below script.=====
+select a.event, a.wait_time, a.seconds_in_wait from gv$session_wait a, gv$session b where a.sid=b.sid and 
+b.sid=(select SID from v$session where PADDR=(select PADDR from v$bgprocess where NAME='MRP0'));
+
+==============check RFS and MRP============
+select sequence#,process,status from v$managed_standby;
+
+select thread#,sequence#,process,client_process,status,blocks from v$managed_standby;
+
+====================check last applied======
+select FIRST_TIME,NEXT_TIME, SEQUENCE#,APPLIED from v$archived_log where APPLIED='YES' order by SEQUENCE#;
+select max(SEQUENCE#) "LAST_LOG_GENERATED",APPLIED from V$ARCHIVED_LOG where THREAD#=1 AND APPLIED='YES' GROUP BY APPLIED;
+
+=====To see archive gap in dataguard, execute following script.====
+SELECT THREAD#, LOW_SEQUENCE#, HIGH_SEQUENCE# FROM V$ARCHIVE_GAP;
+
+======Below script provides information about approximate completion time of the recovery process===
+select to_char(start_time,'DD-MON-RR HH24:MI:SS') start_time,item,round(sofar/1024,2) "MB/Sec" from v$recovery_progress 
+where (item='Active Apply Rate' or item='Average Apply Rate');
+
+select status, gap_status from v$archive_dest_status where dest_id = 3;
+
+select dest_id,status,target,error,destination,dest_name from v$archive_dest where dest_id = 3;
+
+select object_name,object_type from dba_objects where status like 'INVALID';
+
+select * from v$standby_log;
+
+select * from v$flash_recovery_area_usage;
+
+select * from v$dataguard_status order by 7 desc;
+
+SELECT gvi.thread#, timestamp, message FROM gv$dataguard_status gvds, gv$instance gvi 
+WHERE gvds.inst_id = gvi.inst_id AND severity in ('Error','Fatal') ORDER BY timestamp, thread#;
+
+select * from V$ARCHIVE_DEST
+
+select sequence#, applied, to_date(to_char(first_time,'DD-MON-YY:HH24:MI:SS'),
+'DD-MON-YY:HH24:MI:SS') "First Time" ,
+to_char(next_time,'DD-MON-YY:HH24:MI:SS') "Next Time"
+from v$archived_log
+UNION
+select NULL,database_role,NULL, db_unique_name from v$database
+order by "First Time";
+
+
+
+======To see all parameters of Oracle dataguard, you can execute following query.======
+select name, value from v$parameter
+where name in ('db_name','db_unique_name','log_archive_config',    
+'log_archive_dest_1','log_archive_dest_2','log_archive_dest_3',
+               'log_archive_dest_state_1','log_archive_dest_state_2','log_archive_dest_state_3', 'remote_login_passwordfile',
+               'log_archive_format','log_archive_max_processes','fal_server','fal_client','db_file_name_convert',
+              'log_file_name_convert', 'standby_file_management') order by 1;
+
+
+REDBOX
+======
+
+
+
+2024-07-24T07:24:16.501790+01:00
+ rfs (PID:796857): Opened log for T-2.S-190985 dbid 3998855182 branch 1052057720
+2024-07-24T07:25:25.276083+01:00
+ rfs (PID:884067): krsr_rfs_atc: Identified database type as 'PHYSICAL STANDBY': Client is Foreground (PID:3696960)
+2024-07-24T07:25:27.308118+01:00
+SWITCHOVER VERIFY BEGIN
+2024-07-24T07:25:29.156213+01:00
+SWITCHOVER VERIFY: standby database's reccovery lags behind. The apply lag is 50116
+SWITCHOVER VERIFY WARNING: primary database has 17 temporary files, this database has 11 temporary files. More temp files  should be added to this database.
+SWITCHOVER VERIFY COMPLETE
+2024-07-24T07:26:41.331612+01:00
+ rfs (PID:813931): Opened log for T-1.S-162621 dbid 3998855182 branch 1052057720
+2024-07-24T07:27:26.854175+01:00
+
+
+edit database pngfin set state=TRANSPORT-ON;
+edit database dngfin set state=APPLY-ON;
+
+edit database pngrdbox set state=TRANSPORT-ON;
+edit database dngrdbox set state=APPLY-ON;
+
+
+Primary
+-----------
+select thread#, max(sequence#) "Last Primary Seq Generated"
+from v$archived_log val, v$database vdb
+where val.resetlogs_change# = vdb.resetlogs_change#
+group by thread# order by 1;
+
+
+STANDBY
+-------
+SQL> select thread#, max(sequence#) "Last Standby Seq Received"
+from v$archived_log val, v$database vdb
+where val.resetlogs_change# = vdb.resetlogs_change#
+group by thread# order by 1;
+
+SQL>select thread#, max(sequence#) "Last Standby Seq Applied"
+from v$archived_log val, v$database vdb
+where val.resetlogs_change# = vdb.resetlogs_change#
+and val.applied in ('YES','IN-MEMORY')
+group by thread# order by 1;
+
+4)
+
+Also upload latest alert log from standby.
+SRDC contains alert log till 22nd July.
+
+
+
+
