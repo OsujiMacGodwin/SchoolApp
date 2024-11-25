@@ -410,15 +410,7 @@ where d.FILE_ID = v.FILE#
 order by d.TABLESPACE_NAME, d.FILE_NAME;
 
 select FILE_NAME from dba_temp_files;
-10.234.203.217
-10.234.171.50
 
-Clirec DB - 10.234.18.26
-
-10.234.171.111 ORA06564
-
-
-CFRMTS   - SYS@pngcfm1 
 
 ---------ALTER TABLESPACE SYSTEM ADD DATAFILE '+DATA' SIZE 5G AUTOEXTEND ON MAXSIZE UNLIMITED;
 ALTER TABLESPACE SYSAUX ADD DATAFILE '+DATA' SIZE 5G AUTOEXTEND ON MAXSIZE UNLIMITED;
@@ -455,7 +447,7 @@ ORDER BY created DESC;
 CREATE PUBLIC DATABASE LINK ACCOUNTOPENINGDB
  CONNECT TO APPLOGIN
  IDENTIFIED BY <password>
- USING '(DESCRIPTION = (ADDRESS = (PROTOCOL = TCP)(HOST = 10.234.178.115)(PORT = 1521)) (CONNECT_DATA = (SID = dg4msql24)) (HS = OK))';
+ USING '(DESCRIPTION = (ADDRESS = (PROTOCOL = TCP)(HOST = )(PORT = 1521)) (CONNECT_DATA = (SID = dg4msql24)) (HS = OK))';
 
 
 =============Reclaim space or shrink datafile ==============
@@ -511,7 +503,7 @@ QUERY="WHERE TRAN_DATE between to_date('01-JAN-23','DD-MON-YY') and to_date('21-
 CREATE PUBLIC DATABASE LINK EZCASH_LINK
  CONNECT TO INSTANTCASH
  IDENTIFIED BY <password>
- USING '(DESCRIPTION = (ADDRESS_LIST = (ADDRESS = (PROTOCOL = tcp)(HOST = 10.234.17.21)(PORT = 1521))) (CONNECT_DATA = (SID = dg4msql3)) (HS = OK))';
+ USING '(DESCRIPTION = (ADDRESS_LIST = (ADDRESS = (PROTOCOL = tcp)(HOST = )(PORT = 1521))) (CONNECT_DATA = (SID = dg4msql3)) (HS = OK))';
  
  
 ======CHECK FAILED RMAN BACKUP====================
@@ -534,11 +526,11 @@ Restore UAT
 ==============
 Step 1 = Restore the controlfile of the Incremental Backup
 
-restore primary controlfile from 'flashback/rmanbkp/daily/pngfin/31AUG2024INCR/pngfin_ctrl_file_8i3436no_49426_1_1.bkp'
+restore primary controlfile from 'flashback/rmanbkp/daily/31AUG2024INCR/pngfin_ctrl_file_8i3436no_49426_1_1.bkp'
 
 Sept 2 = Restore database
 
-nohup rman target / @/flashback/rmanbkp/daily/pngfin/tngfinrestore.full log=/flashback/expdp//backupFINACLEUNGFINrec_update1.ful.log &
+nohup rman target / @/flashback/rmanbkp/daily/tngfinrestore.full log=/flashback/expdp//backupFINACLEUNGFINrec_update1.ful.log &
 
 Step 3 = Switch DATABASE
 
